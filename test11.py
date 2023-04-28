@@ -162,8 +162,10 @@ if __name__ == '__main__':
     # 获取沪深300基金数据
     data300 = get_file_fund_data(code300, path300)
     net_asset_value300 = data300['单位净值']
+    net_asset_value300_total = data300['累计净值']
     # 把沪深300的「单位净值」数据插入到当前基金数据中
     data.insert(data.shape[1], '单位净值300', net_asset_value300)
+    data.insert(data.shape[1], '累计净值300', net_asset_value300_total)
     
     data['净值日期'] = pd.to_datetime(data['净值日期'], format='%Y/%m/%d')
     data['单位净值'] = data['单位净值'].astype(float)
@@ -175,34 +177,45 @@ if __name__ == '__main__':
     
 
     # 过滤时间
-    start='2022-03-22'
-    end='2023-03-22'
+    start='2020-04-27'
+    end='2023-04-27'
     data = data[(data['净值日期'] <= end) & (data['净值日期'] >= start)]
     print('过滤一定时间段:')
     print(data)
     # data = data.tail(100)
 
-
-    data['相对净值'] = (data['单位净值'].astype(float) - float(data.iloc[0]['单位净值'])) / float(data.iloc[0]['单位净值'])
-    data['相对净值300'] = (data['单位净值300'].astype(float) - float(data.iloc[0]['单位净值300'])) / float(data.iloc[0]['单位净值300'])
-    print('相对净值:')
-    print(data)
     
-
-    
-    # 使用matplotlib.pyplot显示图片
-    net_value_date = data['净值日期']
-    net_asset_value = data['相对净值']
-    net_asset_value300 = data['相对净值300']
-    fig = plt.figure()
-    ax1 = fig.add_subplot()
-    ax1.plot(net_value_date, net_asset_value)
-    ax1.plot(net_value_date, net_asset_value300)
-    ax1.set_ylabel('净值数据')
-    ax1.set_xlabel('日期')
-    plt.title('基金净值走势图')
-    plt.legend(loc='upper left')
+    data2 = data[['净值日期', '累计净值', '累计净值300']].set_index(['净值日期'], drop=True)
+    print('重置源数据：')
+    print(data2)
+    # print(data2[data2['累计净值'] >= 3.1])
+    data3 = (1 + data2.pct_change()).cumprod()
+    print('增长率：')
+    print(data3)
+    data3.loc[:,['累计净值','累计净值300']].plot(figsize=(10,5), grid=True)
     plt.show()
+
+
+    # data['相对净值'] = (data['单位净值'].astype(float) - float(data.iloc[0]['单位净值'])) / float(data.iloc[0]['单位净值'])
+    # data['相对净值300'] = (data['单位净值300'].astype(float) - float(data.iloc[0]['单位净值300'])) / float(data.iloc[0]['单位净值300'])
+    # print('相对净值:')
+    # print(data)
+    
+
+    
+    # # 使用matplotlib.pyplot显示图片
+    # net_value_date = data['净值日期']
+    # net_asset_value = data['相对净值']
+    # net_asset_value300 = data['相对净值300']
+    # fig = plt.figure()
+    # ax1 = fig.add_subplot()
+    # ax1.plot(net_value_date, net_asset_value)
+    # ax1.plot(net_value_date, net_asset_value300)
+    # ax1.set_ylabel('净值数据')
+    # ax1.set_xlabel('日期')
+    # plt.title('基金净值走势图')
+    # plt.legend(loc='upper left')
+    # plt.show()
 
 
 
