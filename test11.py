@@ -90,6 +90,10 @@ def get_fund_data(code, per=20, sdate='', edate=''):
             records.append(row_records)
         page += 1
 
+    #如果获取到为空数据，就返回空
+    if len(records) == 0:
+        return pd.DataFrame()
+
     # 获取表头
     bs = BeautifulSoup(html, 'html.parser')
     heads = []
@@ -138,22 +142,65 @@ def get_file_fund_data(code,path=''):
         # 表中的下一个交易日
         next_table_date = get_next_work_date(last_table_date)
         # 如果表中的最新日期小于实际上个交易日，就重新获取最新的数据，插入之前数据后再次存储到本地
+        #当前周中间有假期时不适用，但是不影响使用，获取为空就不存储进去
         if last_table_date<last_work_date:
             print('本地不是最新数据,需要更新')
             new_data = get_fund_data(code,per=49,sdate=next_table_date,edate=last_work_date)
             print(f'新数据:{new_data}')
-            # 插入到dataframe中，再重新写入到文件中
-            data = insert(data, 0, new_data).reset_index(drop=True)
-            # data = data.reset_index(drop=True)
-            data.to_excel(path, sheet_name='data', header=1)
-            print('已经存入到本地的最新数据:')
-            print(data)
+            if new_data.empty == False:
+                # 插入到dataframe中，再重新写入到文件中
+                data = insert(data, 0, new_data).reset_index(drop=True)
+                data = data.reset_index(drop=True)
+                # data.to_csv(path)
+                data.to_excel(path, sheet_name='data', header=1)
+                print('已经存入到本地的最新数据:')
+                print(data)
     else :
         print('本地没有数据')
         data = get_fund_data(code,per=49,sdate='2000-01-01',edate=last_work_date)
+        # data.to_csv(path)
         data.to_excel(path, sheet_name='data', header=1)
     threadLock.release()
     return data
+
+def calulateAdjustNetValue(data):
+    """
+    计算复权净值
+    """
+    # 计算基金的复权净值
+    data.insert(data.shape[1], '复权净值', 0)
+    # 上一个交易日的单位净值，方便计算出来增长率
+    last_net_value = data['单位净值'].shift()
+    # 单位分红：注意区分「每份基金份额折算1.xx份」、「每份派现金0.xx元」的区别，前者需要用当天净值乘以折算份数，后者需要用当前净值加上派现份数
+    net_dividend = 0
+    # 复权净值，初始化值和单位净值一样，都为1
+    adj_net_value = 1
+    # 单位净值增长率，和抓取的「日增长率」数据相同，单独计算出来是为了方便计算复权净值
+    net_value_ratio = np.NaN
+    for index, row in data.iterrows():
+        dividend_value = row['分红送配']
+        is_give_cash = False
+        # 计算单位分红
+        if pd.isna(dividend_value) == False:
+            is_give_cash = '每份派现金' in dividend_value
+            value_list_str = re.findall(r"\d+\.?\d*", dividend_value)
+            if len(value_list_str) != 0:
+                E_temp = float(value_list_str[0])
+                net_dividend = E_temp - 1 if E_temp > 1 else E_temp
+        else:
+            net_dividend = 0
+        # 计算单位净值涨跌幅
+        if is_give_cash:
+            net_value_ratio = (row['单位净值'] + net_dividend - last_net_value.loc[index]) / last_net_value.loc[index]
+        else:
+            net_value_ratio = (row['单位净值'] * (1 + net_dividend) - last_net_value.loc[index]) / last_net_value.loc[index]
+        # 从有涨跌幅开始计算
+        if pd.isna(net_value_ratio) == False:
+            adj_net_value = adj_net_value * (1 + net_value_ratio)
+            row['复权净值'] = adj_net_value
+        data.iloc[index] = row
+    return data
+
 
 
 if __name__ == '__main__':    
@@ -174,25 +221,28 @@ if __name__ == '__main__':
     print('正序排列:')
     print(data)
 
-    
+    # data = calulateAdjustNetValue(data)
+    # data.to_csv('/Users/alex/Desktop/A_linshi121.csv')
+    # data = pd.read_csv('/Users/alex/Desktop/A_linshi121.csv')
+    # data = data.iloc[::-1] # 正序排列
 
     # 过滤时间
-    start='2020-04-27'
-    end='2023-04-27'
+    start='2020-05-04'
+    end='2023-05-04'
     data = data[(data['净值日期'] <= end) & (data['净值日期'] >= start)]
     print('过滤一定时间段:')
     print(data)
-    # data = data.tail(100)
 
     
-    data2 = data[['净值日期', '累计净值', '累计净值300']].set_index(['净值日期'], drop=True)
+    
+    data2 = data[['净值日期', '复权净值', '累计净值', '累计净值300']].set_index(['净值日期'], drop=True)
     print('重置源数据：')
     print(data2)
     # print(data2[data2['累计净值'] >= 3.1])
     data3 = (1 + data2.pct_change()).cumprod()
     print('增长率：')
     print(data3)
-    data3.loc[:,['累计净值','累计净值300']].plot(figsize=(10,5), grid=True)
+    data3.loc[:,['复权净值','累计净值300']].plot(figsize=(10,5), grid=True)
     plt.show()
 
 
